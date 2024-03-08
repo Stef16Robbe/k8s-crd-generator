@@ -15,13 +15,16 @@ func capitalize(input string) string {
 	return strings.ToUpper(input[:1]) + input[1:]
 }
 
-func createStructs(f *File, parent string, props map[string]v1.JSONSchemaProps) {
+func createStructs(f *File, parent string, props map[string]v1.JSONSchemaProps, needParent bool) {
 	var fields []Code
 
 	for k, props := range props {
 		k = capitalize(k)
 		switch props.Type {
 		case "object":
+			if needParent {
+				k = fmt.Sprintf("%v%v", parent, k)
+			}
 			if props.Properties == nil {
 				fields = append(fields, Id(k).Map(String()).Interface())
 			} else {
@@ -32,19 +35,21 @@ func createStructs(f *File, parent string, props map[string]v1.JSONSchemaProps) 
 		case "integer":
 			fields = append(fields, Id(k).Int())
 		case "array":
-			// TODO: the array type is the type of the child
-			// array type has inside it items: and that one has the type object or whatever
-			// need to make this recursive somehow - we need to have props.Items.Schema.Type, but since we use jennifer,
-			// we need to map these to code like we do in this switch statement
-			// the problem is ofcourse that an array can have arrays in arrays, etc ...
-			// should be somewhat easily fixable by providing the type in this function...?
-			// i hope.
-			fmt.Printf("%+v: %+v\n", k, props.Items.Schema.Properties)
-			fields = append(fields, Id(k).Index().String())
-			os.Exit(0)
+			// TODO:
+			// almost done...? I hope? It just duplicates some structs for some reason.
+			// but we're almost there I think :)
+
+			// fmt.Printf("%+v: %+v\n", k, props.Items.Schema.Properties)
+			if len(props.Items.Schema.Properties) > 1 {
+				fields = append(fields, Id(fmt.Sprintf("%v%v", parent, k)).Index().Id(fmt.Sprintf("%v%v", parent, k)))
+				createStructs(f, k, props.Items.Schema.Properties, true)
+			} else {
+				createStructs(f, k, props.Properties, false)
+			}
+			// os.Exit(0)
 		}
 		if props.Properties != nil {
-			createStructs(f, k, props.Properties)
+			createStructs(f, k, props.Properties, false)
 		} //else if props.Items.Schema.Properties != nil {
 
 		//}
@@ -70,7 +75,10 @@ func main() {
 	kind := obj.Spec.Names.Kind
 	f := NewFile("generated")
 
-	createStructs(f, kind, obj.Spec.Versions[0].Schema.OpenAPIV3Schema.Properties)
+	createStructs(f, kind, obj.Spec.Versions[0].Schema.OpenAPIV3Schema.Properties, false)
 
-	f.Save(fmt.Sprintf("generated/%v.go", kind))
+	err = f.Save(fmt.Sprintf("generated/%v.go", kind))
+	if err != nil {
+		panic(err.Error())
+	}
 }
