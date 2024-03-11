@@ -15,6 +15,20 @@ func capitalize(input string) string {
 	return strings.ToUpper(input[:1]) + input[1:]
 }
 
+func dedupeSlice[T comparable](sliceList []T) []T {
+	dedupeMap := make(map[T]struct{})
+	list := []T{}
+
+	for _, slice := range sliceList {
+		if _, exists := dedupeMap[slice]; !exists {
+			dedupeMap[slice] = struct{}{}
+			list = append(list, slice)
+		}
+	}
+
+	return list
+}
+
 func createStructs(f *File, parent string, props map[string]v1.JSONSchemaProps, needParent bool) {
 	var fields []Code
 
@@ -38,22 +52,33 @@ func createStructs(f *File, parent string, props map[string]v1.JSONSchemaProps, 
 			// TODO:
 			// almost done...? I hope? It just duplicates some structs for some reason.
 			// but we're almost there I think :)
+			// yeah, because we don't check for duplicates lol.
+			// two things here;
+			// 1. most duplicate structs will be 100% the same
+			// 2. but can we assume that every key with the same name has the same values in them? Not sure.
+			fields = append(fields, Id(fmt.Sprintf("%v%v", parent, k)).Index().Id(fmt.Sprintf("%v%v", parent, k)))
 
-			// fmt.Printf("%+v: %+v\n", k, props.Items.Schema.Properties)
 			if len(props.Items.Schema.Properties) > 1 {
-				fields = append(fields, Id(fmt.Sprintf("%v%v", parent, k)).Index().Id(fmt.Sprintf("%v%v", parent, k)))
 				createStructs(f, k, props.Items.Schema.Properties, true)
 			} else {
-				createStructs(f, k, props.Properties, false)
+				if len(props.Properties) > 0 {
+					createStructs(f, k, props.Properties, false)
+				} /*else {
+					switch props.Type {
+					case "string":
+						fields = append(fields, Id(k).String())
+					case "integer":
+						fields = append(fields, Id(k).Int())
+					}
+				} */
 			}
-			// os.Exit(0)
 		}
 		if props.Properties != nil {
 			createStructs(f, k, props.Properties, false)
-		} //else if props.Items.Schema.Properties != nil {
-
-		//}
+		}
 	}
+
+	fields = dedupeSlice[Code](fields)
 
 	f.Type().Id(parent).Struct(fields...)
 }
